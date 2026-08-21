@@ -1,3 +1,5 @@
+use std::env;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::jj::{Bookmark, Jj, Revision};
@@ -21,6 +23,7 @@ impl Focus {
 pub struct PendingCommand {
     pub label: String,
     pub args: Vec<String>,
+    pub interactive: bool,
 }
 
 impl PendingCommand {
@@ -32,8 +35,17 @@ impl PendingCommand {
 #[derive(Clone, Debug)]
 pub enum Overlay {
     Help,
-    BookmarkInput { value: String },
-    DescriptionInput { value: String },
+    BookmarkInput {
+        value: String,
+    },
+    DescriptionInput {
+        value: String,
+    },
+    Diff {
+        revision: String,
+        lines: Vec<String>,
+        scroll: u16,
+    },
     Confirm(PendingCommand),
 }
 
@@ -47,6 +59,7 @@ pub struct App {
     pub bookmark_index: usize,
     pub focus: Focus,
     pub overlay: Option<Overlay>,
+    pending_interactive: Option<PendingCommand>,
     pub status: String,
     pub status_is_error: bool,
 }
@@ -63,6 +76,7 @@ impl App {
             bookmark_index: 0,
             focus: Focus::Revisions,
             overlay: None,
+            pending_interactive: None,
             status: "Loading repository…".into(),
             status_is_error: false,
         };
@@ -93,7 +107,9 @@ impl App {
             KeyCode::Char('2') => self.focus = Focus::Bookmarks,
             KeyCode::Down | KeyCode::Char('j') => self.select_next(),
             KeyCode::Up | KeyCode::Char('k') => self.select_previous(),
+            KeyCode::Enter | KeyCode::Char('v') => self.view_diff(),
             KeyCode::Char('e') => self.edit_description(),
+            KeyCode::Char('s') => self.split_revision(),
             KeyCode::Char('n') => self.create_bookmark(),
             KeyCode::Char('m') => self.move_bookmark_to_selection(),
             KeyCode::Char('-') => self.move_bookmark_to_parent(),
@@ -151,6 +167,69 @@ impl App {
                 }
                 _ => self.overlay = Some(Overlay::BookmarkInput { value }),
             },
+            Overlay::Diff {
+                revision,
+                lines,
+                mut scroll,
+            } => {
+                let max_scroll = lines.len().saturating_sub(1).min(u16::MAX as usize) as u16;
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') => {}
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        scroll = scroll.saturating_add(1).min(max_scroll);
+                        self.overlay = Some(Overlay::Diff {
+                            revision,
+                            lines,
+                            scroll,
+                        });
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        scroll = scroll.saturating_sub(1);
+                        self.overlay = Some(Overlay::Diff {
+                            revision,
+                            lines,
+                            scroll,
+                        });
+                    }
+                    KeyCode::PageDown => {
+                        scroll = scroll.saturating_add(20).min(max_scroll);
+                        self.overlay = Some(Overlay::Diff {
+                            revision,
+                            lines,
+                            scroll,
+                        });
+                    }
+                    KeyCode::PageUp => {
+                        scroll = scroll.saturating_sub(20);
+                        self.overlay = Some(Overlay::Diff {
+                            revision,
+                            lines,
+                            scroll,
+                        });
+                    }
+                    KeyCode::Char('g') => {
+                        self.overlay = Some(Overlay::Diff {
+                            revision,
+                            lines,
+                            scroll: 0,
+                        });
+                    }
+                    KeyCode::Char('G') => {
+                        self.overlay = Some(Overlay::Diff {
+                            revision,
+                            lines,
+                            scroll: max_scroll,
+                        });
+                    }
+                    _ => {
+                        self.overlay = Some(Overlay::Diff {
+                            revision,
+                            lines,
+                            scroll,
+                        });
+                    }
+                }
+            }
             Overlay::DescriptionInput { mut value } => match key.code {
                 KeyCode::Esc => {}
                 KeyCode::Enter => {
@@ -213,6 +292,77 @@ impl App {
                 self.bookmark_index = self.bookmark_index.saturating_sub(1);
             }
         }
+    }
+
+    fn view_diff(&mut self) {
+        let Some(revision) = self.selected_revision() else {
+            self.set_error("No revision selected");
+            return;
+        };
+        let change_id = revision.change_id.clone();
+        match Jj::diff(&change_id) {
+            Ok(lines) => {
+                self.overlay = Some(Overlay::Diff {
+                    revision: change_id,
+                    lines,
+                    scroll: 0,
+                });
+            }
+            Err(error) => self.set_error(format!("Cannot load diff for {change_id}: {error:#}")),
+        }
+    }
+
+    pub fn take_interactive_command(&mut self) -> Option<PendingCommand> {
+        self.pending_interactive.take()
+    }
+
+    pub fn finish_interactive_command(
+        &mut self,
+        command: &PendingCommand,
+        result: Result<(), String>,
+    ) {
+        self.refresh();
+        match result {
+            Ok(()) => {
+                self.status = format!("Completed: {}", command.display());
+                self.status_is_error = false;
+            }
+            Err(error) => self.set_error(format!("{}: {error}", command.display())),
+        }
+    }
+
+    fn split_revision(&mut self) {
+        let Some(revision) = self.selected_revision() else {
+            self.set_error("No revision selected");
+            return;
+        };
+        if self.changed_files.is_empty() {
+            self.set_error("Selected revision has no changes to split");
+            return;
+        }
+        let executable = match env::current_exe() {
+            Ok(path) => path,
+            Err(error) => {
+                self.set_error(format!("Cannot locate lazyjj executable: {error}"));
+                return;
+            }
+        };
+        let executable = executable.display().to_string();
+        let diff_editor = toml_array(&[&executable, "hunk-editor", "$left", "$right"]);
+        let description_editor = toml_array(&[&executable, "description-editor"]);
+        self.confirm_interactive(
+            "Open lazyjj hunk picker for selected revision",
+            vec![
+                "--config".into(),
+                format!("ui.diff-editor={diff_editor}"),
+                "--config".into(),
+                format!("ui.editor={description_editor}"),
+                "split".into(),
+                "--interactive".into(),
+                "-r".into(),
+                revision.change_id.clone(),
+            ],
+        );
     }
 
     fn edit_description(&mut self) {
@@ -341,10 +491,24 @@ impl App {
         self.overlay = Some(Overlay::Confirm(PendingCommand {
             label: label.into(),
             args,
+            interactive: false,
+        }));
+    }
+
+    fn confirm_interactive(&mut self, label: impl Into<String>, args: Vec<String>) {
+        self.overlay = Some(Overlay::Confirm(PendingCommand {
+            label: label.into(),
+            args,
+            interactive: true,
         }));
     }
 
     fn execute(&mut self, command: PendingCommand) {
+        if command.interactive {
+            self.pending_interactive = Some(command);
+            return;
+        }
+
         let display = command.display();
         match Jj::run(&command.args) {
             Ok(_) => {
@@ -405,4 +569,13 @@ impl App {
         self.status = message.into();
         self.status_is_error = true;
     }
+}
+
+fn toml_array(values: &[&str]) -> String {
+    let values = values
+        .iter()
+        .map(|value| format!("\"{}\"", value.replace('\\', "\\\\").replace('\"', "\\\"")))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("[{values}]")
 }

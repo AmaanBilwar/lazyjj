@@ -229,7 +229,7 @@ fn panel(title: &'static str, focused: bool) -> Block<'static> {
 fn draw_overlay(frame: &mut Frame<'_>, overlay: &Overlay) {
     match overlay {
         Overlay::Help => {
-            let area = centered(frame.area(), 64, 20);
+            let area = centered(frame.area(), 64, 22);
             let help = Text::from(vec![
                 Line::styled("Navigation", Style::default().fg(ACCENT).bold()),
                 Line::from("  1 / 2               focus numbered pane"),
@@ -237,7 +237,9 @@ fn draw_overlay(frame: &mut Frame<'_>, overlay: &Overlay) {
                 Line::from("  j / k or arrows     select item"),
                 Line::from(""),
                 Line::styled("Actions", Style::default().fg(ACCENT).bold()),
+                Line::from("  Enter / v   open selected revision diff"),
                 Line::from("  e   edit selected revision description"),
+                Line::from("  s   split selected revision by files or hunks"),
                 Line::from("  n   create bookmark on selected revision"),
                 Line::from("  m   move selected bookmark to selected revision"),
                 Line::from("  -   move selected bookmark to @-"),
@@ -264,6 +266,41 @@ fn draw_overlay(frame: &mut Frame<'_>, overlay: &Overlay) {
                 Line::styled("Enter continue · Esc cancel", Style::default().fg(MUTED)),
             ]);
             draw_popup(frame, area, " New bookmark ", Paragraph::new(text));
+        }
+        Overlay::Diff {
+            revision,
+            lines,
+            scroll,
+        } => {
+            let area = centered(
+                frame.area(),
+                frame.area().width.saturating_sub(2),
+                frame.area().height.saturating_sub(2),
+            );
+            let diff = lines
+                .iter()
+                .map(|line| {
+                    let style = if line.starts_with("diff --git") {
+                        Style::default().fg(ACCENT).bold()
+                    } else if line.starts_with('+') {
+                        Style::default().fg(Color::Green)
+                    } else if line.starts_with('-') {
+                        Style::default().fg(Color::Red)
+                    } else if line.starts_with("@@") {
+                        Style::default().fg(SELECTED)
+                    } else {
+                        Style::default()
+                    };
+                    Line::styled(line.as_str(), style)
+                })
+                .collect::<Vec<_>>();
+            let title = format!(" Diff {revision} · j/k/PgUp/PgDn scroll · Esc close ");
+            draw_popup(
+                frame,
+                area,
+                &title,
+                Paragraph::new(diff).scroll((*scroll, 0)),
+            );
         }
         Overlay::DescriptionInput { value } => {
             let area = centered(frame.area(), 72, 8);

@@ -133,6 +133,15 @@ impl Jj {
         Ok(output.lines().map(str::to_owned).collect())
     }
 
+    pub fn diff(revision: &str) -> Result<Vec<String>> {
+        let output = Self::output(&["diff", "--git", "--color", "never", "-r", revision])?;
+        if output.is_empty() {
+            Ok(vec!["No changes in selected revision".into()])
+        } else {
+            Ok(output.lines().map(str::to_owned).collect())
+        }
+    }
+
     pub fn run(args: &[String]) -> Result<String> {
         let borrowed = args.iter().map(String::as_str).collect::<Vec<_>>();
         Self::output(&borrowed)
