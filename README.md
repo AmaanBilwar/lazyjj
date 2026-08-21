@@ -31,7 +31,7 @@ cargo run
 - `j`, `k`, arrows: move selection
 - `Enter`, `v`: view selected revision diff
 - `e`: edit selected revision description with `jj describe`
-- `s`: split selected revision by files or hunks
+- `s`: open lazyjj hunk picker for selected revision
 - `n`: create bookmark on selected revision
 - `m`: move selected bookmark to selected revision
 - `-`: move selected bookmark to `@-`
