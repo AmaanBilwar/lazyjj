@@ -4,9 +4,10 @@ Early keyboard-first TUI prototype for [Jujutsu](https://jj-vcs.github.io/jj/).
 
 ## Prototype scope
 
-- Browse revisions, changed files, and local/remote bookmarks
+- Browse revisions, changed files, full diffs, and local/remote bookmarks
 - Switch panes with `Tab` or numbered shortcuts
 - Add, edit, or clear selected revision description
+- Split selected revision with Jujutsu's interactive file/hunk selector
 - Create bookmark on selected revision
 - Move selected bookmark to selected revision or `@-`
 - Push or delete selected local bookmark
@@ -28,7 +29,9 @@ cargo run
 - `2`: focus bookmarks pane
 - `Tab`, `Shift+Tab`: cycle panes
 - `j`, `k`, arrows: move selection
-- `e`: edit selected revision description
+- `Enter`, `v`: view selected revision diff
+- `e`: edit selected revision description with `jj describe`
+- `s`: split selected revision by files or hunks
 - `n`: create bookmark on selected revision
 - `m`: move selected bookmark to selected revision
 - `-`: move selected bookmark to `@-`
