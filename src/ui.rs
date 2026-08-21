@@ -196,7 +196,9 @@ fn draw_footer(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let keys = Line::from(vec![
         key("1/2", "pane"),
         key("j/k", "move"),
+        key("Enter", "diff"),
         key("e", "describe"),
+        key("s", "split"),
         key("n", "new mark"),
         key("m", "move mark"),
         key("-", "move to @-"),
