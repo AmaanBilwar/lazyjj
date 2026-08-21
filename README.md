@@ -7,7 +7,8 @@ Early keyboard-first TUI prototype for [Jujutsu](https://jj-vcs.github.io/jj/).
 - Browse revisions, changed files, full diffs, and local/remote bookmarks
 - Switch panes with `Tab` or numbered shortcuts
 - Add, edit, or clear selected revision description
-- Split selected revision with Jujutsu's interactive file/hunk selector
+- Split selected revision with lazyjj hunk picker: `j/k`, `Space`, `Enter`, `c`
+- Select hunks first, then enter split description inside lazyjj; no external editor
 - Create bookmark on selected revision
 - Move selected bookmark to selected revision or `@-`
 - Push or delete selected local bookmark
@@ -45,4 +46,4 @@ cargo run
 
 ## Current limitations
 
-Prototype runs `jj` synchronously, so slow commands briefly block input. Revision graph uses a flat list. Remote state, search, diff viewer, operation log, configuration, and background refresh remain future work.
+Prototype runs `jj` synchronously, so slow commands briefly block input. Revision graph uses a flat list. Search, operation log, configuration, and background refresh remain future work.
